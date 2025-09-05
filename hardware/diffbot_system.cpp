@@ -233,16 +233,17 @@ hardware_interface::return_type DiffDriveArduinoHardware::read(
   {
     return hardware_interface::return_type::ERROR;
   }
-  double radial_vel[] = {0.0, 0.0, 0.0, 0.0};
+  double vel_cms[] = {0.0, 0.0, 0.0, 0.0};
 
-  comms_.read_encoder_values(radial_vel);
+  comms_.read_encoder_values(vel_cms);
 
   double delta_seconds = period.seconds();
 
   for (int i = 0; i<4; i++){
-    joint_velocity_states_[i] = radial_vel[i]*cfg_.radius;
-    joint_position_states_[i]+=delta_seconds*radial_vel[i];
+    joint_velocity_states_[i] = vel_cms[i]/cfg_.radius;
+    joint_position_states_[i]+=delta_seconds*joint_velocity_states_[i];
   }
+
 
   
 

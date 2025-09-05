@@ -84,7 +84,7 @@ public:
     std::string response = send_msg("\r");
   }
 
-  void read_encoder_values(double *radial_vel)
+  void read_encoder_values(double *vel_cms)
 {
     std::string response = send_msg("e\r");  // e.g. "123 456 789 1011"
     std::istringstream iss(response);
@@ -96,16 +96,16 @@ public:
     }
 
     if (values.size() >= 4) {
-        radial_vel[0] = (double) values[0];
-        radial_vel[1] = (double) values[1];
-        radial_vel[2] = (double) values[2];
-        radial_vel[3] = (double) values[3];
+        vel_cms[0] = (double) values[0];
+        vel_cms[1] = (double) values[1];
+        vel_cms[2] = (double) values[2];
+        vel_cms[3] = (double) values[3];
     }
 }
 
-  void read_encoder_values_old(double *radial_vel)
+  void read_encoder_values_old(int &val_1, int &val_2)
   {
-    int val_1, val_2;
+    // int val_1, val_2;
     std::string response = send_msg("e\r");
 
     std::string delimiter = " ";
@@ -124,7 +124,7 @@ public:
   }
   void set_motor_values(int val_1, int val_2)
   {
-    int val_1,  val_2;
+    // int val_1,  val_2;
     std::stringstream ss;
     ss << "m " << val_1 << " " << val_2 << "\r";
     send_msg(ss.str());
