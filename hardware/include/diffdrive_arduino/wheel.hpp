@@ -15,6 +15,7 @@ class Wheel
     double pos = 0;
     double vel = 0;
     double rads_per_count = 0;
+    double radius;
 
     Wheel() = default;
 
@@ -33,6 +34,10 @@ class Wheel
     double calc_enc_angle()
     {
       return enc * rads_per_count;
+    }
+
+    double rad_ps_to_mps(double rps){
+      return radius*rps;
     }
 
 

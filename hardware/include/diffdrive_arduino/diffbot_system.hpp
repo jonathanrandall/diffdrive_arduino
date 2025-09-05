@@ -32,7 +32,7 @@
 #include "diffdrive_arduino/visibility_control.h"
 
 #include "diffdrive_arduino/arduino_comms.hpp"
-#include "diffdrive_arduino/wheel.hpp"
+// #include "diffdrive_arduino/wheel.hpp"
 
 namespace diffdrive_arduino
 {
@@ -44,6 +44,7 @@ struct Config
   std::string left_wheel_name = "";
   std::string right_wheel_name = "";
   float loop_rate = 0.0;
+  float radius = 0.0;
   std::string device = "";
   int baud_rate = 0;
   int timeout_ms = 0;
@@ -97,8 +98,15 @@ private:
 
   ArduinoComms comms_;
   Config cfg_;
-  Wheel wheel_l_;
-  Wheel wheel_r_;
+
+  std::vector<double> joint_velocity_commands_;    // Only position commands (no velocity commands)
+  std::vector<double> joint_position_states_;      // Position states from hardware
+  std::vector<double> joint_velocity_states_;      // Velocity states (calculated from position changes)
+  
+  // Joint names
+  std::vector<std::string> joint_names_;
+  // Wheel wheel_l_;
+  // Wheel wheel_r_;
 };
 
 }  // namespace diffdrive_arduino

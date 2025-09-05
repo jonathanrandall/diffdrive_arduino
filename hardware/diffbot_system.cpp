@@ -36,9 +36,10 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(
   }
 
 
-  cfg_.left_wheel_name = info_.hardware_parameters["left_wheel_name"];
-  cfg_.right_wheel_name = info_.hardware_parameters["right_wheel_name"];
+  // cfg_.left_wheel_name = info_.hardware_parameters["left_wheel_name"];
+  // cfg_.right_wheel_name = info_.hardware_parameters["right_wheel_name"];
   cfg_.loop_rate = std::stof(info_.hardware_parameters["loop_rate"]);
+  cfg_.radius = (std::stof(info_.hardware_parameters["wheel_radius"]))*100; // in cm
   cfg_.device = info_.hardware_parameters["device"];
   cfg_.baud_rate = std::stoi(info_.hardware_parameters["baud_rate"]);
   cfg_.timeout_ms = std::stoi(info_.hardware_parameters["timeout_ms"]);
@@ -54,14 +55,20 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(
   {
     RCLCPP_INFO(rclcpp::get_logger("DiffDriveArduinoHardware"), "PID values not supplied, using defaults.");
   }
+
+  // Initialize joint data for 6-DOF xArm trajectory controller
+  joint_velocity_commands_.assign(4, 0.0);    // Only position commands
+  joint_position_states_.assign(4, 0.0);      // Position states
+  joint_velocity_states_.assign(4, 0.0);      // Velocity states (calculated)
   
 
-  wheel_l_.setup(cfg_.left_wheel_name, cfg_.enc_counts_per_rev);
-  wheel_r_.setup(cfg_.right_wheel_name, cfg_.enc_counts_per_rev);
+  // wheel_l_.setup(cfg_.left_wheel_name, cfg_.enc_counts_per_rev);
+  // wheel_r_.setup(cfg_.right_wheel_name, cfg_.enc_counts_per_rev);
 
 
   for (const hardware_interface::ComponentInfo & joint : info_.joints)
   {
+    joint_names_.push_back(joint.name);
     // DiffBotSystem has exactly two states and one command interface on each joint
     if (joint.command_interfaces.size() != 1)
     {
@@ -115,16 +122,29 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(
 std::vector<hardware_interface::StateInterface> DiffDriveArduinoHardware::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
+  for (size_t i = 0; i < joint_names_.size(); i++)
+  {
+    // Position interface for each joint
+    state_interfaces.emplace_back(
+      hardware_interface::StateInterface(joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_position_states_[i]));
+    
+    // Velocity interface for each joint
+    state_interfaces.emplace_back(
+      hardware_interface::StateInterface(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_velocity_states_[i]));
+  }
 
-  state_interfaces.emplace_back(hardware_interface::StateInterface(
-    wheel_l_.name, hardware_interface::HW_IF_POSITION, &wheel_l_.pos));
-  state_interfaces.emplace_back(hardware_interface::StateInterface(
-    wheel_l_.name, hardware_interface::HW_IF_VELOCITY, &wheel_l_.vel));
+  RCLCPP_INFO(rclcpp::get_logger("XArmHardware"), 
+               "Exported %zu state interfaces", state_interfaces.size());
 
-  state_interfaces.emplace_back(hardware_interface::StateInterface(
-    wheel_r_.name, hardware_interface::HW_IF_POSITION, &wheel_r_.pos));
-  state_interfaces.emplace_back(hardware_interface::StateInterface(
-    wheel_r_.name, hardware_interface::HW_IF_VELOCITY, &wheel_r_.vel));
+  // state_interfaces.emplace_back(hardware_interface::StateInterface(
+  //   wheel_l_.name, hardware_interface::HW_IF_POSITION, &wheel_l_.pos));
+  // state_interfaces.emplace_back(hardware_interface::StateInterface(
+  //   wheel_l_.name, hardware_interface::HW_IF_VELOCITY, &wheel_l_.vel));
+
+  // state_interfaces.emplace_back(hardware_interface::StateInterface(
+  //   wheel_r_.name, hardware_interface::HW_IF_POSITION, &wheel_r_.pos));
+  // state_interfaces.emplace_back(hardware_interface::StateInterface(
+  //   wheel_r_.name, hardware_interface::HW_IF_VELOCITY, &wheel_r_.vel));
 
   return state_interfaces;
 }
@@ -133,11 +153,21 @@ std::vector<hardware_interface::CommandInterface> DiffDriveArduinoHardware::expo
 {
   std::vector<hardware_interface::CommandInterface> command_interfaces;
 
-  command_interfaces.emplace_back(hardware_interface::CommandInterface(
-    wheel_l_.name, hardware_interface::HW_IF_VELOCITY, &wheel_l_.cmd));
+  for (size_t i = 0; i < joint_names_.size(); i++)
+  {
+    // Only position command interface for each joint (no velocity commands)
+    command_interfaces.emplace_back(
+      hardware_interface::CommandInterface(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_velocity_commands_[i]));
+  }
 
-  command_interfaces.emplace_back(hardware_interface::CommandInterface(
-    wheel_r_.name, hardware_interface::HW_IF_VELOCITY, &wheel_r_.cmd));
+  RCLCPP_INFO(rclcpp::get_logger("XArmHardware"), 
+               "Exported %zu command interfaces", command_interfaces.size());
+
+  // command_interfaces.emplace_back(hardware_interface::CommandInterface(
+  //   wheel_l_.name, hardware_interface::HW_IF_VELOCITY, &wheel_l_.cmd));
+
+  // command_interfaces.emplace_back(hardware_interface::CommandInterface(
+  //   wheel_r_.name, hardware_interface::HW_IF_VELOCITY, &wheel_r_.cmd));
 
   return command_interfaces;
 }
@@ -180,7 +210,7 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_activate(
   }
   if (cfg_.pid_p > 0)
   {
-    comms_.set_pid_values(cfg_.pid_p,cfg_.pid_d,cfg_.pid_i,cfg_.pid_o);
+    // comms_.set_pid_values(cfg_.pid_p,cfg_.pid_d,cfg_.pid_i,cfg_.pid_o);
   }
   RCLCPP_INFO(rclcpp::get_logger("DiffDriveArduinoHardware"), "Successfully activated!");
 
@@ -203,18 +233,26 @@ hardware_interface::return_type DiffDriveArduinoHardware::read(
   {
     return hardware_interface::return_type::ERROR;
   }
+  double radial_vel[] = {0.0, 0.0, 0.0, 0.0};
 
-  comms_.read_encoder_values(wheel_l_.enc, wheel_r_.enc);
+  comms_.read_encoder_values(radial_vel);
 
   double delta_seconds = period.seconds();
 
-  double pos_prev = wheel_l_.pos;
-  wheel_l_.pos = wheel_l_.calc_enc_angle();
-  wheel_l_.vel = (wheel_l_.pos - pos_prev) / delta_seconds;
+  for (int i = 0; i<4; i++){
+    joint_velocity_states_[i] = radial_vel[i]*cfg_.radius;
+    joint_position_states_[i]+=delta_seconds*radial_vel[i];
+  }
 
-  pos_prev = wheel_r_.pos;
-  wheel_r_.pos = wheel_r_.calc_enc_angle();
-  wheel_r_.vel = (wheel_r_.pos - pos_prev) / delta_seconds;
+  
+
+  // double pos_prev = wheel_l_.pos;
+  // wheel_l_.pos = wheel_l_.calc_enc_angle();
+  // wheel_l_.vel = (wheel_l_.pos - pos_prev) / delta_seconds;
+
+  // pos_prev = wheel_r_.pos;
+  // wheel_r_.pos = wheel_r_.calc_enc_angle();
+  // wheel_r_.vel = (wheel_r_.pos - pos_prev) / delta_seconds;
 
   return hardware_interface::return_type::OK;
 }
@@ -227,9 +265,18 @@ hardware_interface::return_type diffdrive_arduino ::DiffDriveArduinoHardware::wr
     return hardware_interface::return_type::ERROR;
   }
 
-  int motor_l_counts_per_loop = wheel_l_.cmd / wheel_l_.rads_per_count / cfg_.loop_rate;
-  int motor_r_counts_per_loop = wheel_r_.cmd / wheel_r_.rads_per_count / cfg_.loop_rate;
-  comms_.set_motor_values(motor_l_counts_per_loop, motor_r_counts_per_loop);
+  int vel_cms[] = {0, 0, 0, 0};
+
+  for (int i = 0; i<4; i++){
+    vel_cms[i] = (int) (joint_velocity_commands_[i]*(cfg_.radius));
+    
+  }
+
+  comms_.set_motor_values(vel_cms);
+
+  // int motor_l_counts_per_loop = wheel_l_.cmd / wheel_l_.rads_per_count / cfg_.loop_rate;
+  // int motor_r_counts_per_loop = wheel_r_.cmd / wheel_r_.rads_per_count / cfg_.loop_rate;
+  // comms_.set_motor_values(motor_l_counts_per_loop, motor_r_counts_per_loop);
   return hardware_interface::return_type::OK;
 }
 
